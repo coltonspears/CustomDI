@@ -48,7 +48,7 @@ namespace CustomDI.Tests
                 _dependentService = null;
             }
             
-            [Inject]
+            [ConstructorInject]
             public ServiceWithMultipleConstructors(IService service)
             {
                 _service = service;

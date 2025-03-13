@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Linq;
 using System.Windows;
+using System.ComponentModel;
 
 namespace CustomDI.Wpf
 {
@@ -14,6 +14,7 @@ namespace CustomDI.Wpf
         private readonly IContainer _container;
         private readonly Dictionary<string, Type> _viewModelTypes = new Dictionary<string, Type>(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, object> _designTimeViewModels = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<Type, Type> _viewToViewModelMappings = new Dictionary<Type, Type>();
 
         /// <summary>
         /// Initializes a new instance of the <see cref="ViewModelLocator"/> class.
@@ -37,6 +38,69 @@ namespace CustomDI.Wpf
 
             _viewModelTypes[key] = typeof(TViewModel);
             return this;
+        }
+
+        /// <summary>
+        /// Maps a view type to a view model type.
+        /// </summary>
+        /// <typeparam name="TView">The view type.</typeparam>
+        /// <typeparam name="TViewModel">The view model type.</typeparam>
+        /// <returns>The view model locator for method chaining.</returns>
+        public ViewModelLocator Map<TView, TViewModel>()
+            where TView : FrameworkElement
+            where TViewModel : class
+        {
+            _viewToViewModelMappings[typeof(TView)] = typeof(TViewModel);
+            return this;
+        }
+
+        /// <summary>
+        /// Gets a view model for a view.
+        /// </summary>
+        /// <typeparam name="TViewModel">The view model type.</typeparam>
+        /// <param name="view">The view.</param>
+        /// <returns>The view model instance.</returns>
+        public TViewModel GetViewModelForView<TViewModel>(FrameworkElement view) where TViewModel : class
+        {
+            if (view == null)
+                throw new ArgumentNullException(nameof(view));
+
+            var viewType = view.GetType();
+            if (_viewToViewModelMappings.TryGetValue(viewType, out var viewModelType))
+            {
+                return (TViewModel)_container.Resolve(viewModelType);
+            }
+
+            throw new InvalidOperationException($"No view model mapping found for view type {viewType.Name}");
+        }
+
+        /// <summary>
+        /// Gets a view model for a view.
+        /// </summary>
+        /// <param name="view">The view.</param>
+        /// <returns>The view model instance.</returns>
+        public object GetViewModelForView(FrameworkElement view)
+        {
+            if (view == null)
+                throw new ArgumentNullException(nameof(view));
+
+            var viewType = view.GetType();
+            if (_viewToViewModelMappings.TryGetValue(viewType, out var viewModelType))
+            {
+                // Check if we're in design mode and have a design-time view model
+                if (IsInDesignMode)
+                {
+                    var viewTypeName = viewType.Name;
+                    if (_designTimeViewModels.TryGetValue(viewTypeName, out var designTimeViewModel))
+                    {
+                        return designTimeViewModel;
+                    }
+                }
+
+                return _container.Resolve(viewModelType);
+            }
+
+            throw new InvalidOperationException($"No view model mapping found for view type {viewType.Name}");
         }
 
         /// <summary>
@@ -93,7 +157,7 @@ namespace CustomDI.Wpf
         {
             get
             {
-                var descriptor = System.ComponentModel.DependencyPropertyDescriptor.FromProperty(
+                var descriptor = DependencyPropertyDescriptor.FromProperty(
                     DesignerProperties.IsInDesignModeProperty,
                     typeof(FrameworkElement));
 

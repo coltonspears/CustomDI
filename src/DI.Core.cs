@@ -242,6 +242,14 @@ namespace CustomDI
         T ResolveNamed<T>(string name) where T : class;
 
         /// <summary>
+        /// Resolves a named service from the context.
+        /// </summary>
+        /// <param name="serviceType">The service type to resolve.</param>
+        /// <param name="name">The name of the service.</param>
+        /// <returns>The resolved service.</returns>
+        object ResolveNamed(Type serviceType, string name);
+
+        /// <summary>
         /// Resolves a keyed service from the context.
         /// </summary>
         /// <typeparam name="T">The service type to resolve.</typeparam>
@@ -250,11 +258,26 @@ namespace CustomDI
         T ResolveKeyed<T>(object key) where T : class;
 
         /// <summary>
+        /// Resolves a keyed service from the context.
+        /// </summary>
+        /// <param name="serviceType">The service type to resolve.</param>
+        /// <param name="key">The key of the service.</param>
+        /// <returns>The resolved service.</returns>
+        object ResolveKeyed(Type serviceType, object key);
+
+        /// <summary>
         /// Resolves all services of the specified type from the context.
         /// </summary>
         /// <typeparam name="T">The service type to resolve.</typeparam>
         /// <returns>The resolved services.</returns>
         IEnumerable<T> ResolveAll<T>() where T : class;
+
+        /// <summary>
+        /// Resolves all services of the specified type from the context.
+        /// </summary>
+        /// <param name="serviceType">The service type to resolve.</param>
+        /// <returns>The resolved services.</returns>
+        IEnumerable<object> ResolveAll(Type serviceType);
     }
 
     /// <summary>

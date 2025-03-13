@@ -1,0 +1,10 @@
+﻿<Application x:Class="CustomDI.Examples.Wpf.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:CustomDI.Examples.Wpf" xmlns:wpf="clr-namespace:CustomDI.Wpf;assembly=CustomDI"
+             StartupUri="MainWindow.xaml">
+    <Application.Resources>
+        <!--<wpf:ViewModelLocator  x:Key="ViewModelLocator"/>-->
+    </Application.Resources>
+
+</Application>

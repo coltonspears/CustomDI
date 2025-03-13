@@ -9,7 +9,7 @@ CustomDI is a lightweight, feature-rich dependency injection framework for .NET 
 - **Service Registration**: Register services by interface, concrete type, instance, or factory
 - **Service Resolution**: Resolve services with constructor injection, property injection, and more
 - **Lifecycle Management**: Support for singleton, transient, and scoped lifetimes
-- **WPF Integration**: View model locator, XAML markup extensions, and design-time support
+- **WPF Integration**: View model locator with automatic view-to-viewmodel binding, XAML markup extensions, and design-time support
 - **Factory Support**: Various factory patterns for creating service instances
 - **Configuration Helpers**: Fluent API, convention-based registration, and assembly scanning
 
@@ -150,6 +150,10 @@ container.Register<IService, AnotherServiceImplementation>().Keyed("backup");
 var context = new ResolveContext((Container)container, null);
 var mainService = context.ResolveNamed<IService>("main");
 var backupService = context.ResolveKeyed<IService>("backup");
+
+// Resolving with Type parameter
+var mainServiceByType = context.ResolveNamed(typeof(IService), "main");
+var backupServiceByType = context.ResolveKeyed(typeof(IService), "backup");
 ```
 
 ### Conditional Registration
@@ -253,60 +257,110 @@ var backupService = factory("backup");
 
 ## WPF Integration
 
-### Configuring the ViewModelLocator
+### View-to-ViewModel Binding
+
+CustomDI provides several ways to bind view models to views:
+
+#### 1. Using the ViewModelLocator with View-to-ViewModel Mapping
 
 ```csharp
-// Create a container
-var container = ContainerFactory.CreateContainer();
-
-// Register services and view models
-container.Register<IDataService, DataService>(ServiceLifetime.Singleton);
-container.Register<MainViewModel>(ServiceLifetime.Transient);
-container.Register<HomeViewModel>(ServiceLifetime.Transient);
-
-// Configure the view model locator
+// Configure the view model locator with view-to-viewmodel mappings
 container.RegisterViewModelLocator(locator => {
-    locator.Register<MainViewModel>("Main");
-    locator.Register<HomeViewModel>("Home");
+    // Map views to view models
+    locator.Map<MainView, MainViewModel>();
+    locator.Map<HomeView, HomeViewModel>();
+    locator.Map<SettingsView, SettingsViewModel>();
     
-    // Register design-time view models
-    if (ViewModelLocator.IsInDesignMode)
-    {
-        locator.RegisterDesignTimeViewModel("Main", new MainViewModel(
-            new DesignTimeDataService()));
-    }
+    // For backward compatibility, also register by key
+    locator.Register<MainViewModel>("Main");
 });
 
 // Add the locator to application resources
 Application.Current.Resources["ViewModelLocator"] = container.Resolve<ViewModelLocator>();
+
+// Get a view model for a view
+var view = new MainView();
+var viewModel = locator.GetViewModelForView(view);
 ```
 
-### Using the ViewModelLocator in XAML
+#### 2. Using the ViewModelBinding Markup Extension
 
 ```xml
-<!-- Using the locator as a resource -->
-<Window.DataContext>
-    <Binding Source="{StaticResource ViewModelLocator}" Path="[Main]" />
-</Window.DataContext>
-
-<!-- Using the markup extension -->
-<Window DataContext="{di:ViewModel Key=Main}" />
-
-<!-- Using the attached property -->
-<Window di:ViewModelBinder.ViewModelKey="Main" />
+<!-- In XAML -->
+<Window x:Class="MyApp.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:di="clr-namespace:CustomDI.Wpf;assembly=CustomDI"
+        DataContext="{di:ViewModelBinding}">
+    <Grid>
+        <!-- Content here -->
+    </Grid>
+</Window>
 ```
 
-### Creating Views with Typed ViewModels
+#### 3. Using the AutoBind Attached Property
+
+```xml
+<!-- In XAML -->
+<UserControl x:Class="MyApp.Views.HomeView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:di="clr-namespace:CustomDI.Wpf;assembly=CustomDI"
+             di:ViewModelBinder.AutoBind="True">
+    <Grid>
+        <!-- Content here -->
+    </Grid>
+</UserControl>
+```
+
+#### 4. Using the ViewBase<T> Base Class
 
 ```csharp
-// Base view with typed view model
-public class HomeView : ViewBase<HomeViewModel>
+// In code-behind
+public class MainView : ViewBase<MainViewModel>
 {
     protected override void OnViewModelLoaded()
     {
-        // Access the view model
-        ViewModel.LoadData();
+        // The ViewModel property is now available
+        Console.WriteLine($"Main view loaded with user: {ViewModel.CurrentUser}");
     }
+}
+```
+
+```xml
+<!-- In XAML -->
+<local:MainView x:Class="MyApp.Views.MainView"
+                xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                xmlns:local="clr-namespace:MyApp.Views">
+    <Grid>
+        <!-- Content here -->
+    </Grid>
+</local:MainView>
+```
+
+### Using the ViewModelBase Class
+
+```csharp
+public class MainViewModel : ViewModelBase
+{
+    private string _name;
+    public string Name
+    {
+        get => _name;
+        set => SetProperty(ref _name, value, nameof(Name));
+    }
+}
+```
+
+### Design-Time Support
+
+```csharp
+// Register design-time view models
+if (ViewModelLocator.IsInDesignMode)
+{
+    locator.RegisterDesignTimeViewModel("MainView", new MainViewModel(
+        new DesignTimeDataService()));
 }
 ```
 
@@ -364,7 +418,7 @@ public Service(ILogger logger = null)
 
 4. **Prefer Constructor Injection**: Use constructor injection as the primary method of dependency injection, with property injection as a fallback.
 
-5. **Use the ViewModelLocator**: In WPF applications, use the ViewModelLocator to manage view models and provide design-time data.
+5. **Use the ViewModelLocator with View-to-ViewModel Mapping**: In WPF applications, use the ViewModelLocator with view-to-viewmodel mapping for automatic binding.
 
 6. **Avoid Service Locator Pattern**: Avoid using the container as a service locator; instead, inject dependencies directly.
 

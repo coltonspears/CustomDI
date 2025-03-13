@@ -1,47 +1,33 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Windows;
 using System.Windows.Markup;
 
 namespace CustomDI.Wpf
 {
     /// <summary>
-    /// Provides markup extension for resolving view models in XAML.
+    /// Provides markup extension for binding view models to views in XAML.
     /// </summary>
-    public class ViewModelExtension : MarkupExtension
+    [MarkupExtensionReturnType(typeof(object))]
+    public class ViewModelBindingExtension : MarkupExtension
     {
         private static ViewModelLocator _locator;
 
         /// <summary>
-        /// Gets or sets the key of the view model to resolve.
+        /// Initializes a new instance of the <see cref="ViewModelBindingExtension"/> class.
         /// </summary>
-        public string Key { get; set; }
-
-        /// <summary>
-        /// Initializes a new instance of the <see cref="ViewModelExtension"/> class.
-        /// </summary>
-        public ViewModelExtension()
+        public ViewModelBindingExtension()
         {
         }
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="ViewModelExtension"/> class with the specified key.
-        /// </summary>
-        /// <param name="key">The key of the view model to resolve.</param>
-        public ViewModelExtension(string key)
-        {
-            Key = key;
-        }
-
-        /// <summary>
-        /// Returns the view model instance.
+        /// Returns the view model instance for the current view.
         /// </summary>
         /// <param name="serviceProvider">The service provider.</param>
         /// <returns>The view model instance.</returns>
         public override object ProvideValue(IServiceProvider serviceProvider)
         {
-            if (string.IsNullOrEmpty(Key))
-                throw new InvalidOperationException("Key cannot be null or empty");
-
             if (_locator == null)
             {
                 var app = Application.Current;
@@ -57,45 +43,91 @@ namespace CustomDI.Wpf
                 }
             }
 
-            return _locator[Key];
+            // Get the target object (the view)
+            var provideValueTarget = serviceProvider.GetService(typeof(IProvideValueTarget)) as IProvideValueTarget;
+            var targetObject = provideValueTarget?.TargetObject as FrameworkElement;
+
+            if (targetObject == null)
+            {
+                throw new InvalidOperationException("Target object is not a FrameworkElement.");
+            }
+
+            // Get the view model for the view
+            return _locator.GetViewModelForView(targetObject);
         }
     }
 
     /// <summary>
-    /// Provides a base class for view models with property change notification.
+    /// Provides attached properties for automatically binding view models to views.
     /// </summary>
-    public abstract class ViewModelBase : System.ComponentModel.INotifyPropertyChanged
+    public static class ViewModelBinder
     {
         /// <summary>
-        /// Occurs when a property value changes.
+        /// The AutoBind attached property.
         /// </summary>
-        public event System.ComponentModel.PropertyChangedEventHandler PropertyChanged;
+        public static readonly DependencyProperty AutoBindProperty =
+            DependencyProperty.RegisterAttached(
+                "AutoBind",
+                typeof(bool),
+                typeof(ViewModelBinder),
+                new PropertyMetadata(false, OnAutoBindChanged));
 
         /// <summary>
-        /// Raises the PropertyChanged event.
+        /// Gets the AutoBind value.
         /// </summary>
-        /// <param name="propertyName">The name of the property that changed.</param>
-        protected virtual void OnPropertyChanged(string propertyName)
+        /// <param name="obj">The dependency object.</param>
+        /// <returns>The AutoBind value.</returns>
+        public static bool GetAutoBind(DependencyObject obj)
         {
-            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(propertyName));
+            return (bool)obj.GetValue(AutoBindProperty);
         }
 
         /// <summary>
-        /// Sets a property value and raises the PropertyChanged event if the value changed.
+        /// Sets the AutoBind value.
         /// </summary>
-        /// <typeparam name="T">The type of the property.</typeparam>
-        /// <param name="storage">The backing field for the property.</param>
-        /// <param name="value">The new value for the property.</param>
-        /// <param name="propertyName">The name of the property.</param>
-        /// <returns>True if the value changed, false otherwise.</returns>
-        protected bool SetProperty<T>(ref T storage, T value, string propertyName)
+        /// <param name="obj">The dependency object.</param>
+        /// <param name="value">The AutoBind value.</param>
+        public static void SetAutoBind(DependencyObject obj, bool value)
         {
-            if (Equals(storage, value))
-                return false;
+            obj.SetValue(AutoBindProperty, value);
+        }
 
-            storage = value;
-            OnPropertyChanged(propertyName);
-            return true;
+        /// <summary>
+        /// Called when the AutoBind property changes.
+        /// </summary>
+        /// <param name="d">The dependency object.</param>
+        /// <param name="e">The event arguments.</param>
+        private static void OnAutoBindChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+        {
+            if (d is FrameworkElement element && (bool)e.NewValue)
+            {
+                // Wait until the element is loaded to set the DataContext
+                if (element.IsLoaded)
+                {
+                    BindViewModel(element);
+                }
+                else
+                {
+                    element.Loaded += (sender, args) => BindViewModel(element);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Binds the view model to the view.
+        /// </summary>
+        /// <param name="view">The view.</param>
+        private static void BindViewModel(FrameworkElement view)
+        {
+            var app = Application.Current;
+            if (app?.Resources != null && app.Resources.Contains("ViewModelLocator"))
+            {
+                var locator = app.Resources["ViewModelLocator"] as ViewModelLocator;
+                if (locator != null)
+                {
+                    view.DataContext = locator.GetViewModelForView(view);
+                }
+            }
         }
     }
 
@@ -126,6 +158,20 @@ namespace CustomDI.Wpf
         /// <param name="e">The event arguments.</param>
         private void OnLoaded(object sender, RoutedEventArgs e)
         {
+            // If DataContext is not set, try to get it from the ViewModelLocator
+            if (DataContext == null)
+            {
+                var app = Application.Current;
+                if (app?.Resources != null && app.Resources.Contains("ViewModelLocator"))
+                {
+                    var locator = app.Resources["ViewModelLocator"] as ViewModelLocator;
+                    if (locator != null)
+                    {
+                        DataContext = locator.GetViewModelForView(this);
+                    }
+                }
+            }
+
             if (ViewModel == null)
             {
                 throw new InvalidOperationException(
@@ -140,81 +186,6 @@ namespace CustomDI.Wpf
         /// </summary>
         protected virtual void OnViewModelLoaded()
         {
-        }
-    }
-
-    /// <summary>
-    /// Provides attached properties for binding view models to views.
-    /// </summary>
-    public static class ViewModelBinder
-    {
-        /// <summary>
-        /// The view model key attached property.
-        /// </summary>
-        public static readonly DependencyProperty ViewModelKeyProperty =
-            DependencyProperty.RegisterAttached(
-                "ViewModelKey",
-                typeof(string),
-                typeof(ViewModelBinder),
-                new PropertyMetadata(null, OnViewModelKeyChanged));
-
-        /// <summary>
-        /// Gets the view model key.
-        /// </summary>
-        /// <param name="obj">The dependency object.</param>
-        /// <returns>The view model key.</returns>
-        public static string GetViewModelKey(DependencyObject obj)
-        {
-            return (string)obj.GetValue(ViewModelKeyProperty);
-        }
-
-        /// <summary>
-        /// Sets the view model key.
-        /// </summary>
-        /// <param name="obj">The dependency object.</param>
-        /// <param name="value">The view model key.</param>
-        public static void SetViewModelKey(DependencyObject obj, string value)
-        {
-            obj.SetValue(ViewModelKeyProperty, value);
-        }
-
-        /// <summary>
-        /// Called when the view model key changes.
-        /// </summary>
-        /// <param name="d">The dependency object.</param>
-        /// <param name="e">The event arguments.</param>
-        private static void OnViewModelKeyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
-        {
-            if (d is FrameworkElement element && e.NewValue is string key)
-            {
-                // Wait until the element is loaded to set the DataContext
-                if (element.IsLoaded)
-                {
-                    SetDataContext(element, key);
-                }
-                else
-                {
-                    element.Loaded += (sender, args) => SetDataContext(element, key);
-                }
-            }
-        }
-
-        /// <summary>
-        /// Sets the DataContext of an element to a view model.
-        /// </summary>
-        /// <param name="element">The element.</param>
-        /// <param name="key">The view model key.</param>
-        private static void SetDataContext(FrameworkElement element, string key)
-        {
-            var app = Application.Current;
-            if (app?.Resources != null && app.Resources.Contains("ViewModelLocator"))
-            {
-                var locator = app.Resources["ViewModelLocator"] as ViewModelLocator;
-                if (locator != null)
-                {
-                    element.DataContext = locator[key];
-                }
-            }
         }
     }
 }

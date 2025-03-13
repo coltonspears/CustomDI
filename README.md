@@ -7,7 +7,7 @@ A robust dependency injection framework for .NET Framework 4.8 WPF applications 
 - **Service Registration**: Register services by interface, concrete type, instance, or factory
 - **Service Resolution**: Resolve services with constructor injection, property injection, and more
 - **Lifecycle Management**: Support for singleton, transient, and scoped lifetimes
-- **WPF Integration**: View model locator, XAML markup extensions, and design-time support
+- **WPF Integration**: View model locator with automatic view-to-viewmodel binding, XAML markup extensions, and design-time support
 - **Factory Support**: Various factory patterns for creating service instances
 - **Configuration Helpers**: Fluent API, convention-based registration, and assembly scanning
 
@@ -45,34 +45,71 @@ container.RegisterFactory<ILogger>(context => new Logger("app.log"));
 var service = container.Resolve<IService>();
 ```
 
-### WPF Integration
+### WPF Integration with View-to-ViewModel Binding
+
+CustomDI provides several ways to bind view models to views:
+
+#### Option 1: Using the ViewModelLocator with View-to-ViewModel Mapping
 
 ```csharp
-// Create a container
-var container = ContainerFactory.CreateContainer();
-
-// Register services and view models
-container.Register<IDataService, DataService>(ServiceLifetime.Singleton);
-container.Register<MainViewModel>(ServiceLifetime.Transient);
-container.Register<HomeViewModel>(ServiceLifetime.Transient);
-
-// Configure the view model locator
+// Configure the view model locator with view-to-viewmodel mappings
 container.RegisterViewModelLocator(locator => {
-    locator.Register<MainViewModel>("Main");
-    locator.Register<HomeViewModel>("Home");
+    // Map views to view models
+    locator.Map<MainView, MainViewModel>();
+    locator.Map<HomeView, HomeViewModel>();
+    locator.Map<SettingsView, SettingsViewModel>();
 });
 
 // Add the locator to application resources
 Application.Current.Resources["ViewModelLocator"] = container.Resolve<ViewModelLocator>();
+
+// Get a view model for a view
+var view = new MainView();
+var viewModel = locator.GetViewModelForView(view);
 ```
 
-In your XAML:
+#### Option 2: Using the ViewModelBinding Markup Extension
 
 ```xml
-<!-- Using the locator as a resource -->
-<Window.DataContext>
-    <Binding Source="{StaticResource ViewModelLocator}" Path="[Main]" />
-</Window.DataContext>
+<!-- In XAML -->
+<Window x:Class="MyApp.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:di="clr-namespace:CustomDI.Wpf;assembly=CustomDI"
+        DataContext="{di:ViewModelBinding}">
+    <Grid>
+        <!-- Content here -->
+    </Grid>
+</Window>
+```
+
+#### Option 3: Using the AutoBind Attached Property
+
+```xml
+<!-- In XAML -->
+<UserControl x:Class="MyApp.Views.HomeView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:di="clr-namespace:CustomDI.Wpf;assembly=CustomDI"
+             di:ViewModelBinder.AutoBind="True">
+    <Grid>
+        <!-- Content here -->
+    </Grid>
+</UserControl>
+```
+
+#### Option 4: Using the ViewBase<T> Base Class
+
+```csharp
+// In code-behind
+public class MainView : ViewBase<MainViewModel>
+{
+    protected override void OnViewModelLoaded()
+    {
+        // The ViewModel property is now available
+        Console.WriteLine($"Main view loaded with user: {ViewModel.CurrentUser}");
+    }
+}
 ```
 
 ## Documentation
@@ -95,6 +132,7 @@ Alternatively, you can create a simple console application that calls:
 
 ```csharp
 CustomDI.Tests.ContainerTests.RunAllTests();
+CustomDI.Tests.FixesTests.RunAllTests();
 ```
 
 ## Project Structure
