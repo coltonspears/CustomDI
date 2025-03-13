@@ -1,4 +1,5 @@
-﻿using CustomDI.Wpf;
+﻿using CustomDI.Examples.Wpf.Views;
+using CustomDI.Wpf;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -25,6 +26,7 @@ namespace CustomDI.Examples.Wpf
         {
             InitializeComponent();
 
+
             // Create a container builder
             var builder = new ContainerBuilder();
 
@@ -32,10 +34,11 @@ namespace CustomDI.Examples.Wpf
             builder.Register<IDataService, DataService>(ServiceLifetime.Singleton);
             builder.Register<IUserService, UserService>(ServiceLifetime.Singleton);
             builder.Register<INavigationService, NavigationService>(ServiceLifetime.Singleton);
+            builder.RegisterFactory<ILogger>(context => new FileLogger("app.log"));
 
             // Register view models
             builder.Register<MainViewModel>(ServiceLifetime.Transient);
-            //builder.Register<HomeViewModel>(ServiceLifetime.Transient);
+            builder.Register<HomeViewModel>(ServiceLifetime.Transient);
             //builder.Register<SettingsViewModel>(ServiceLifetime.Transient);
             //builder.Register<UserProfileViewModel>(ServiceLifetime.Transient);
 
@@ -45,7 +48,8 @@ namespace CustomDI.Examples.Wpf
             // Configure the view model locator
             var locator = new ViewModelLocator(container);
             locator.Register<MainViewModel>("Main");
-            //locator.Register<HomeViewModel>("Home");
+
+            locator.Register<HomeViewModel>("Home");
             //locator.Register<SettingsViewModel>("Settings");
             //locator.Register<UserProfileViewModel>("UserProfile");
 
@@ -57,10 +61,56 @@ namespace CustomDI.Examples.Wpf
                     new DesignTimeUserService()));
             }
 
+            container.RegisterViewModelLocator(x => {
+                // Map views to view models
+                x.Map<MainWindow, MainViewModel>();
+                x.Map<HomeView, HomeViewModel>();
+            });
+
             // Add the locator to the application resources
-            Application.Current.Resources["ViewModelLocator"] = locator;
+            Application.Current.Resources["ViewModelLocator"] = container.Resolve<ViewModelLocator>();
+
+            //var view = new HomeView();
+            //var viewModel = locator.GetViewModelForView(view);
+
         }
     }
+
+    public interface ILogger
+    {
+        void Log(string message);
+    }
+
+    public class FileLogger : ILogger
+    {
+        private readonly string _logFile;
+
+        public FileLogger(string logFile)
+        {
+            _logFile = logFile;
+        }
+
+        public void Log(string message)
+        {
+            System.IO.File.AppendAllText(_logFile, message);            
+        }
+    }
+
+    public class ConsoleLogger : ILogger
+    {
+        private readonly string _logFile;
+
+        public ConsoleLogger(string logFile)
+        {
+            _logFile = logFile;
+        }
+
+        public void Log(string message)
+        {
+            Console.WriteLine($"Logging to {_logFile}: {message}");
+        }
+    }
+
 
     /// <summary>
     /// Interface for data service.
@@ -124,10 +174,17 @@ namespace CustomDI.Examples.Wpf
     /// </summary>
     public class NavigationService : INavigationService
     {
+        private readonly ILogger _logger;
+        public NavigationService(ILogger logger)
+        {
+            _logger = logger;
+            _logger.Log("Navigation service created");
+        }
+
         public void NavigateTo(string viewName)
         {
             // Actual navigation logic would go here
-            Console.WriteLine($"Navigating to {viewName}");
+            _logger.Log($"Navigating to {viewName}");
         }
     }
 
@@ -162,6 +219,53 @@ namespace CustomDI.Examples.Wpf
             _navigationService = navigationService;
             _userService = userService;
             CurrentUser = _userService.GetCurrentUser();
+
+            NavigateToHome();
+        }
+
+        public void NavigateToHome()
+        {
+            _navigationService.NavigateTo("Home");
+        }
+
+        public void NavigateToSettings()
+        {
+            _navigationService.NavigateTo("Settings");
+        }
+
+        public void NavigateToUserProfile()
+        {
+            _navigationService.NavigateTo("UserProfile");
+        }
+    }
+
+    /// <summary>
+    /// Main view model.
+    /// </summary>
+    public class HomeViewModel : ViewModelBase
+    {
+        private readonly INavigationService _navigationService;
+        private readonly IUserService _userService;
+
+        private string _currentUser;
+        public string CurrentUser
+        {
+            get => _currentUser;
+            set => SetProperty(ref _currentUser, value, nameof(CurrentUser));
+        }
+
+        private string _currentScreen;
+        public string CurrentScreen
+        {
+            get => _currentScreen;
+            set => SetProperty(ref _currentScreen, value, nameof(CurrentScreen));
+        }
+
+        public HomeViewModel(INavigationService navigationService, IUserService userService)
+        {
+            _navigationService = navigationService;
+            _userService = userService;
+            CurrentScreen = "HOME SCREEN";
         }
 
         public void NavigateToHome()

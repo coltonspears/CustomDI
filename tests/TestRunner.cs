@@ -1,56 +1,56 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
+using System.Runtime.Remoting.Messaging;
 
 namespace CustomDI.Tests
 {
     /// <summary>
-    /// Simple test framework for testing the dependency injection container.
+    /// Simple test runner for the dependency injection container.
     /// </summary>
     public static class TestRunner
     {
-        private static readonly List<TestCase> _testCases = new List<TestCase>();
+        private static readonly Dictionary<string, Action> _tests = new Dictionary<string, Action>();
         private static int _passedTests = 0;
         private static int _failedTests = 0;
 
         /// <summary>
-        /// Adds a test case to the test runner.
+        /// Adds a test to the test runner.
         /// </summary>
-        /// <param name="name">The name of the test case.</param>
-        /// <param name="testAction">The test action.</param>
-        public static void AddTest(string name, Action testAction)
+        /// <param name="name">The name of the test.</param>
+        /// <param name="test">The test action.</param>
+        public static void AddTest(string name, Action test)
         {
-            _testCases.Add(new TestCase(name, testAction));
+            _tests[name] = test;
         }
 
         /// <summary>
-        /// Runs all test cases.
+        /// Runs all tests.
         /// </summary>
         public static void RunTests()
         {
-            Console.WriteLine("Running tests...");
-            Console.WriteLine();
+            _passedTests = 0;
+            _failedTests = 0;
 
-            foreach (var testCase in _testCases)
+            foreach (var test in _tests)
             {
-                RunTest(testCase);
+                RunTest(test.Key, test.Value);
             }
 
-            Console.WriteLine();
-            Console.WriteLine($"Test results: {_passedTests} passed, {_failedTests} failed");
+            Console.WriteLine($"\nTest results: {_passedTests} passed, {_failedTests} failed");
+
         }
 
         /// <summary>
         /// Runs a single test case.
         /// </summary>
         /// <param name="testCase">The test case to run.</param>
-        private static void RunTest(TestCase testCase)
+        private static void RunTest(string name, Action value)
         {
-            Console.Write($"Running test: {testCase.Name}... ");
+            Console.Write($"Running test: {name}... ");
 
             try
             {
-                testCase.TestAction();
+                value();
                 Console.WriteLine("PASSED");
                 _passedTests++;
             }
@@ -77,16 +77,20 @@ namespace CustomDI.Tests
 
         /// <summary>
         /// Asserts that two objects are equal.
+
         /// </summary>
         /// <typeparam name="T">The type of the objects.</typeparam>
+
         /// <param name="expected">The expected value.</param>
         /// <param name="actual">The actual value.</param>
         /// <param name="message">The error message if the objects are not equal.</param>
+
         public static void AreEqual<T>(T expected, T actual, string message = null)
         {
             if (!Equals(expected, actual))
             {
                 throw new Exception(message ?? $"Expected: {expected}, Actual: {actual}");
+
             }
         }
 
@@ -137,6 +141,7 @@ namespace CustomDI.Tests
             {
                 Name = name;
                 TestAction = testAction;
+
             }
         }
     }

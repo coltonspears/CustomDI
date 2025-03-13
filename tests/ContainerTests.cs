@@ -48,7 +48,7 @@ namespace CustomDI.Tests
                 _dependentService = null;
             }
             
-            [ConstructorInject]
+            [Inject]
             public ServiceWithMultipleConstructors(IService service)
             {
                 _service = service;
@@ -132,6 +132,7 @@ namespace CustomDI.Tests
 
         private static void Test_Register_Interface_To_Implementation()
         {
+
             var container = ContainerFactory.CreateContainer();
             container.Register<IService, ServiceImplementation>();
             

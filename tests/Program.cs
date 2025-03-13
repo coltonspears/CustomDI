@@ -11,6 +11,7 @@ namespace CustomDI.Tests
         public static void Main(string[] args)
         {
             CustomDI.Tests.ContainerTests.RunAllTests();
+            CustomDI.Tests.FixesTests.RunAllTests();
             //CustomDI.Tests.TestRunner.RunTests();
             //CustomDI.Tests.FixesTests.RunAllTests();
             Console.ReadLine();

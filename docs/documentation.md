@@ -405,6 +405,37 @@ public Service(ILogger logger = null)
 }
 ```
 
+## Implementation Notes
+
+### Named and Keyed Registration Implementation
+
+The framework implements named and keyed registrations by storing them in separate dictionaries in the container. When you call the `Named` or `Keyed` methods on a registration, the registration is updated and re-added to the container to ensure it's properly indexed for later retrieval.
+
+```csharp
+// Internal implementation (simplified)
+public IRegistrationBuilder Named(string name)
+{
+    _registration.Name = name;
+    _container.AddRegistration(_registration); // Re-add to update indexes
+    return this;
+}
+```
+
+### Factory For All Implementation
+
+The `RegisterFactoryForAll<T>` method creates a factory that uses the container's `ResolveAll<T>` method to retrieve all registered implementations of a service type:
+
+```csharp
+// Implementation
+public static IRegistrationBuilder RegisterFactoryForAll<T>(this IContainer container) where T : class
+{
+    return container.RegisterFactory<Func<IEnumerable<T>>>(context => 
+    {
+        return () => context.ResolveAll<T>();
+    });
+}
+```
+
 ## Best Practices
 
 1. **Register by Interface**: Prefer registering services by interface rather than concrete type to promote loose coupling.

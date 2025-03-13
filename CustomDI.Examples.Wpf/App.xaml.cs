@@ -14,5 +14,10 @@ namespace CustomDI.Examples.Wpf
     /// </summary>
     public partial class App : Application
     {
+
+        public App()
+        {
+            
+        }
     }
 }

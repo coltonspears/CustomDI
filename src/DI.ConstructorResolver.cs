@@ -172,14 +172,14 @@ namespace CustomDI
     /// <summary>
     /// Attribute to mark a constructor as the one to use for dependency injection.
     /// </summary>
-    [AttributeUsage(AttributeTargets.Constructor, AllowMultiple = false, Inherited = true)]
-    public class ConstructorInjectAttribute : Attribute
-    {
-        /// <summary>
-        /// Initializes a new instance of the <see cref="ConstructorInjectAttribute"/> class.
-        /// </summary>
-        public ConstructorInjectAttribute()
-        {
-        }
-    }
+    //[AttributeUsage(AttributeTargets.Constructor, AllowMultiple = false, Inherited = true)]
+    //public class InjectAttribute : Attribute
+    //{
+    //    /// <summary>
+    //    /// Initializes a new instance of the <see cref="InjectAttribute"/> class.
+    //    /// </summary>
+    //    public InjectAttribute()
+    //    {
+    //    }
+    //}
 }

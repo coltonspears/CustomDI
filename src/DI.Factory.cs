@@ -1,347 +1,237 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 
-namespace CustomDI.Factory
+namespace CustomDI
 {
     /// <summary>
-    /// Provides factory support for creating instances with dependencies.
+    /// Implementation of the <see cref="IContainer"/> interface for factory methods.
     /// </summary>
-    public static class FactoryExtensions
+    public static class ContainerFactoryExtensions
     {
         /// <summary>
-        /// Registers a factory for creating instances of a service.
+        /// Registers a factory for all implementations of a service.
         /// </summary>
-        /// <typeparam name="TService">The service type.</typeparam>
-        /// <typeparam name="TFactory">The factory type.</typeparam>
+        /// <typeparam name="T">The service type.</typeparam>
         /// <param name="container">The container.</param>
-        /// <returns>The registration builder for further configuration.</returns>
-        public static IRegistrationBuilder RegisterFactory<TService, TFactory>(this IContainer container)
-            where TService : class
-            where TFactory : class, IFactory<TService>
+        /// <returns>The registration builder.</returns>
+        public static IRegistrationBuilder RegisterFactoryForAll<T>(this IContainer container) where T : class
         {
-            // Register the factory
-            container.Register<IFactory<TService>, TFactory>(ServiceLifetime.Singleton);
-            
-            // Register the service as a factory resolution
-            return container.RegisterFactory<TService>(context => 
-                context.Resolve<IFactory<TService>>().Create());
+            if (container == null)
+                throw new ArgumentNullException(nameof(container));
+
+            // Create a factory that resolves all implementations
+            return container.RegisterFactory<Func<IEnumerable<T>>>(context => 
+            {
+                return () => context.ResolveAll<T>();
+            });
         }
 
         /// <summary>
-        /// Registers a generic factory for creating instances of a service.
-        /// </summary>
-        /// <typeparam name="TService">The service type.</typeparam>
-        /// <param name="container">The container.</param>
-        /// <returns>The registration builder for further configuration.</returns>
-        public static IRegistrationBuilder RegisterGenericFactory<TService>(this IContainer container)
-            where TService : class
-        {
-            // Register the factory
-            container.RegisterInstance<IFactory<TService>>(new DelegateFactory<TService>(
-                () => container.Resolve<TService>()));
-            
-            return container.RegisterFactory<Func<TService>>(context => 
-                () => context.Resolve<TService>());
-        }
-
-        /// <summary>
-        /// Registers a parameterized factory for creating instances of a service.
+        /// Registers a factory for creating services with parameters.
         /// </summary>
         /// <typeparam name="TService">The service type.</typeparam>
         /// <typeparam name="TParam">The parameter type.</typeparam>
         /// <param name="container">The container.</param>
-        /// <param name="factory">The factory function.</param>
-        /// <returns>The registration builder for further configuration.</returns>
+        /// <param name="factory">The factory method.</param>
+        /// <returns>The registration builder.</returns>
         public static IRegistrationBuilder RegisterParameterizedFactory<TService, TParam>(
-            this IContainer container, 
-            Func<TParam, TService> factory)
-            where TService : class
+            this IContainer container,
+            Func<TParam, TService> factory) where TService : class
         {
-            // Register the factory
-            container.RegisterInstance<IParameterizedFactory<TService, TParam>>(
-                new DelegateParameterizedFactory<TService, TParam>(factory));
-            
+            if (container == null)
+                throw new ArgumentNullException(nameof(container));
+
+            if (factory == null)
+                throw new ArgumentNullException(nameof(factory));
+
+            // Register a factory that returns a function
             return container.RegisterFactory<Func<TParam, TService>>(context => factory);
         }
 
         /// <summary>
-        /// Registers a factory for creating multiple instances of a service.
+        /// Registers a factory for creating named services.
         /// </summary>
         /// <typeparam name="TService">The service type.</typeparam>
         /// <param name="container">The container.</param>
-        /// <returns>The registration builder for further configuration.</returns>
-        public static IRegistrationBuilder RegisterFactoryForAll<TService>(this IContainer container)
-            where TService : class
+        /// <returns>The registration builder.</returns>
+        public static IRegistrationBuilder RegisterNamedFactory<TService>(this IContainer container) where TService : class
         {
-            // Register the factory
-            container.RegisterInstance<IFactoryForAll<TService>>(new DelegateFactoryForAll<TService>(
-                () => container.ResolveAll<TService>()));
-            
-            return container.RegisterFactory<Func<IEnumerable<TService>>>(context => 
-                () => context.ResolveAll<TService>());
-        }
+            if (container == null)
+                throw new ArgumentNullException(nameof(container));
 
-        /// <summary>
-        /// Registers a keyed factory for creating instances of a service.
-        /// </summary>
-        /// <typeparam name="TService">The service type.</typeparam>
-        /// <param name="container">The container.</param>
-        /// <returns>The registration builder for further configuration.</returns>
-        public static IRegistrationBuilder RegisterKeyedFactory<TService>(this IContainer container)
-            where TService : class
-        {
-            // Register the factory
-            container.RegisterInstance<IKeyedFactory<TService>>(new DelegateKeyedFactory<TService>(
-                key => {
-                    var context = new ResolveContext((Container)container, null);
-                    return context.ResolveKeyed<TService>(key);
-                }));
-            
-            return container.RegisterFactory<Func<object, TService>>(context => 
-                key => {
-                    var innerContext = new ResolveContext((Container)container, null);
-                    return innerContext.ResolveKeyed<TService>(key);
-                });
-        }
-
-        /// <summary>
-        /// Registers a named factory for creating instances of a service.
-        /// </summary>
-        /// <typeparam name="TService">The service type.</typeparam>
-        /// <param name="container">The container.</param>
-        /// <returns>The registration builder for further configuration.</returns>
-        public static IRegistrationBuilder RegisterNamedFactory<TService>(this IContainer container)
-            where TService : class
-        {
-            // Register the factory
-            container.RegisterInstance<INamedFactory<TService>>(new DelegateNamedFactory<TService>(
-                name => {
-                    var context = new ResolveContext((Container)container, null);
-                    return context.ResolveNamed<TService>(name);
-                }));
-            
+            // Create a factory that resolves named implementations
             return container.RegisterFactory<Func<string, TService>>(context => 
-                name => {
-                    var innerContext = new ResolveContext((Container)container, null);
-                    return innerContext.ResolveNamed<TService>(name);
-                });
+            {
+                return name => context.ResolveNamed<TService>(name);
+            });
         }
-    }
-
-    #region Factory Interfaces
-
-    /// <summary>
-    /// Represents a factory for creating instances of a service.
-    /// </summary>
-    /// <typeparam name="T">The service type.</typeparam>
-    public interface IFactory<out T>
-    {
-        /// <summary>
-        /// Creates an instance of the service.
-        /// </summary>
-        /// <returns>The created instance.</returns>
-        T Create();
-    }
-
-    /// <summary>
-    /// Represents a factory for creating instances of a service with a parameter.
-    /// </summary>
-    /// <typeparam name="T">The service type.</typeparam>
-    /// <typeparam name="TParam">The parameter type.</typeparam>
-    public interface IParameterizedFactory<out T, in TParam>
-    {
-        /// <summary>
-        /// Creates an instance of the service with the specified parameter.
-        /// </summary>
-        /// <param name="param">The parameter.</param>
-        /// <returns>The created instance.</returns>
-        T Create(TParam param);
-    }
-
-    /// <summary>
-    /// Represents a factory for creating multiple instances of a service.
-    /// </summary>
-    /// <typeparam name="T">The service type.</typeparam>
-    public interface IFactoryForAll<out T>
-    {
-        /// <summary>
-        /// Creates multiple instances of the service.
-        /// </summary>
-        /// <returns>The created instances.</returns>
-        IEnumerable<T> CreateAll();
-    }
-
-    /// <summary>
-    /// Represents a factory for creating instances of a service by key.
-    /// </summary>
-    /// <typeparam name="T">The service type.</typeparam>
-    public interface IKeyedFactory<out T>
-    {
-        /// <summary>
-        /// Creates an instance of the service with the specified key.
-        /// </summary>
-        /// <param name="key">The key.</param>
-        /// <returns>The created instance.</returns>
-        T CreateKeyed(object key);
-    }
-
-    /// <summary>
-    /// Represents a factory for creating instances of a service by name.
-    /// </summary>
-    /// <typeparam name="T">The service type.</typeparam>
-    public interface INamedFactory<out T>
-    {
-        /// <summary>
-        /// Creates an instance of the service with the specified name.
-        /// </summary>
-        /// <param name="name">The name.</param>
-        /// <returns>The created instance.</returns>
-        T CreateNamed(string name);
-    }
-
-    #endregion
-
-    #region Factory Implementations
-
-    /// <summary>
-    /// Implements a factory using a delegate.
-    /// </summary>
-    /// <typeparam name="T">The service type.</typeparam>
-    internal class DelegateFactory<T> : IFactory<T>
-    {
-        private readonly Func<T> _factory;
 
         /// <summary>
-        /// Initializes a new instance of the <see cref="DelegateFactory{T}"/> class.
+        /// Registers a factory for creating keyed services.
         /// </summary>
-        /// <param name="factory">The factory function.</param>
-        public DelegateFactory(Func<T> factory)
+        /// <typeparam name="TService">The service type.</typeparam>
+        /// <typeparam name="TKey">The key type.</typeparam>
+        /// <param name="container">The container.</param>
+        /// <returns>The registration builder.</returns>
+        public static IRegistrationBuilder RegisterKeyedFactory<TService, TKey>(this IContainer container) where TService : class
         {
-            _factory = factory ?? throw new ArgumentNullException(nameof(factory));
+            if (container == null)
+                throw new ArgumentNullException(nameof(container));
+
+            // Create a factory that resolves keyed implementations
+            return container.RegisterFactory<Func<TKey, TService>>(context => 
+            {
+                return key => context.ResolveKeyed<TService>(key);
+            });
         }
 
         /// <summary>
-        /// Creates an instance of the service.
+        /// Registers a singleton service.
         /// </summary>
-        /// <returns>The created instance.</returns>
-        public T Create()
+        /// <typeparam name="TService">The service type.</typeparam>
+        /// <typeparam name="TImplementation">The implementation type.</typeparam>
+        /// <param name="container">The container.</param>
+        /// <returns>The registration builder.</returns>
+        public static IRegistrationBuilder RegisterSingleton<TService, TImplementation>(this IContainer container)
+            where TService : class
+            where TImplementation : class, TService
         {
-            return _factory();
+            if (container == null)
+                throw new ArgumentNullException(nameof(container));
+
+            return container.Register<TService, TImplementation>(ServiceLifetime.Singleton);
+        }
+
+        /// <summary>
+        /// Registers a transient service.
+        /// </summary>
+        /// <typeparam name="TService">The service type.</typeparam>
+        /// <typeparam name="TImplementation">The implementation type.</typeparam>
+        /// <param name="container">The container.</param>
+        /// <returns>The registration builder.</returns>
+        public static IRegistrationBuilder RegisterTransient<TService, TImplementation>(this IContainer container)
+            where TService : class
+            where TImplementation : class, TService
+        {
+            if (container == null)
+                throw new ArgumentNullException(nameof(container));
+
+            return container.Register<TService, TImplementation>(ServiceLifetime.Transient);
+        }
+
+        /// <summary>
+        /// Registers a scoped service.
+        /// </summary>
+        /// <typeparam name="TService">The service type.</typeparam>
+        /// <typeparam name="TImplementation">The implementation type.</typeparam>
+        /// <param name="container">The container.</param>
+        /// <returns>The registration builder.</returns>
+        public static IRegistrationBuilder RegisterScoped<TService, TImplementation>(this IContainer container)
+            where TService : class
+            where TImplementation : class, TService
+        {
+            if (container == null)
+                throw new ArgumentNullException(nameof(container));
+
+            return container.Register<TService, TImplementation>(ServiceLifetime.Scoped);
+        }
+
+        /// <summary>
+        /// Registers all types in an assembly that implement a specific interface.
+        /// </summary>
+        /// <typeparam name="TService">The service type.</typeparam>
+        /// <param name="container">The container.</param>
+        /// <param name="assembly">The assembly to scan.</param>
+        /// <param name="lifetime">The lifetime of the services.</param>
+        public static void RegisterAssemblyTypes<TService>(
+            this IContainer container,
+            Assembly assembly,
+            ServiceLifetime lifetime = ServiceLifetime.Transient) where TService : class
+        {
+            if (container == null)
+                throw new ArgumentNullException(nameof(container));
+
+            if (assembly == null)
+                throw new ArgumentNullException(nameof(assembly));
+
+            var serviceType = typeof(TService);
+            var types = assembly.GetTypes()
+                .Where(t => t.IsClass && !t.IsAbstract && serviceType.IsAssignableFrom(t));
+
+            foreach (var type in types)
+            {
+                container.Register(serviceType, type, lifetime);
+            }
+        }
+
+        /// <summary>
+        /// Registers all types in an assembly that match a predicate.
+        /// </summary>
+        /// <param name="container">The container.</param>
+        /// <param name="assembly">The assembly to scan.</param>
+        /// <param name="predicate">The predicate to match types.</param>
+        /// <param name="lifetime">The lifetime of the services.</param>
+        public static void RegisterAssemblyTypes(
+            this IContainer container,
+            Assembly assembly,
+            Func<Type, bool> predicate,
+            ServiceLifetime lifetime = ServiceLifetime.Transient)
+        {
+            if (container == null)
+                throw new ArgumentNullException(nameof(container));
+
+            if (assembly == null)
+                throw new ArgumentNullException(nameof(assembly));
+
+            if (predicate == null)
+                throw new ArgumentNullException(nameof(predicate));
+
+            var types = assembly.GetTypes()
+                .Where(t => t.IsClass && !t.IsAbstract && predicate(t));
+
+            foreach (var type in types)
+            {
+                container.Register(type, type, lifetime);
+            }
+        }
+
+        /// <summary>
+        /// Registers types by convention.
+        /// </summary>
+        /// <param name="container">The container.</param>
+        /// <param name="assembly">The assembly to scan.</param>
+        /// <param name="implementationSuffix">The suffix for implementation types.</param>
+        /// <param name="lifetime">The lifetime of the services.</param>
+        public static void RegisterAssemblyTypesByConvention(
+            this IContainer container,
+            Assembly assembly,
+            string implementationSuffix,
+            ServiceLifetime lifetime = ServiceLifetime.Transient)
+        {
+            if (container == null)
+                throw new ArgumentNullException(nameof(container));
+
+            if (assembly == null)
+                throw new ArgumentNullException(nameof(assembly));
+
+            if (string.IsNullOrEmpty(implementationSuffix))
+                throw new ArgumentNullException(nameof(implementationSuffix));
+
+            var types = assembly.GetTypes()
+                .Where(t => t.IsClass && !t.IsAbstract && t.Name.EndsWith(implementationSuffix));
+
+            foreach (var implementationType in types)
+            {
+                // Find interfaces implemented by this type
+                var interfaces = implementationType.GetInterfaces();
+                foreach (var interfaceType in interfaces)
+                {
+                    // Register the implementation for each interface
+                    container.Register(interfaceType, implementationType, lifetime);
+                }
+            }
         }
     }
-
-    /// <summary>
-    /// Implements a parameterized factory using a delegate.
-    /// </summary>
-    /// <typeparam name="T">The service type.</typeparam>
-    /// <typeparam name="TParam">The parameter type.</typeparam>
-    internal class DelegateParameterizedFactory<T, TParam> : IParameterizedFactory<T, TParam>
-    {
-        private readonly Func<TParam, T> _factory;
-
-        /// <summary>
-        /// Initializes a new instance of the <see cref="DelegateParameterizedFactory{T, TParam}"/> class.
-        /// </summary>
-        /// <param name="factory">The factory function.</param>
-        public DelegateParameterizedFactory(Func<TParam, T> factory)
-        {
-            _factory = factory ?? throw new ArgumentNullException(nameof(factory));
-        }
-
-        /// <summary>
-        /// Creates an instance of the service with the specified parameter.
-        /// </summary>
-        /// <param name="param">The parameter.</param>
-        /// <returns>The created instance.</returns>
-        public T Create(TParam param)
-        {
-            return _factory(param);
-        }
-    }
-
-    /// <summary>
-    /// Implements a factory for creating multiple instances using a delegate.
-    /// </summary>
-    /// <typeparam name="T">The service type.</typeparam>
-    internal class DelegateFactoryForAll<T> : IFactoryForAll<T>
-    {
-        private readonly Func<IEnumerable<T>> _factory;
-
-        /// <summary>
-        /// Initializes a new instance of the <see cref="DelegateFactoryForAll{T}"/> class.
-        /// </summary>
-        /// <param name="factory">The factory function.</param>
-        public DelegateFactoryForAll(Func<IEnumerable<T>> factory)
-        {
-            _factory = factory ?? throw new ArgumentNullException(nameof(factory));
-        }
-
-        /// <summary>
-        /// Creates multiple instances of the service.
-        /// </summary>
-        /// <returns>The created instances.</returns>
-        public IEnumerable<T> CreateAll()
-        {
-            return _factory();
-        }
-    }
-
-    /// <summary>
-    /// Implements a factory for creating instances by key using a delegate.
-    /// </summary>
-    /// <typeparam name="T">The service type.</typeparam>
-    internal class DelegateKeyedFactory<T> : IKeyedFactory<T>
-    {
-        private readonly Func<object, T> _factory;
-
-        /// <summary>
-        /// Initializes a new instance of the <see cref="DelegateKeyedFactory{T}"/> class.
-        /// </summary>
-        /// <param name="factory">The factory function.</param>
-        public DelegateKeyedFactory(Func<object, T> factory)
-        {
-            _factory = factory ?? throw new ArgumentNullException(nameof(factory));
-        }
-
-        /// <summary>
-        /// Creates an instance of the service with the specified key.
-        /// </summary>
-        /// <param name="key">The key.</param>
-        /// <returns>The created instance.</returns>
-        public T CreateKeyed(object key)
-        {
-            return _factory(key);
-        }
-    }
-
-    /// <summary>
-    /// Implements a factory for creating instances by name using a delegate.
-    /// </summary>
-    /// <typeparam name="T">The service type.</typeparam>
-    internal class DelegateNamedFactory<T> : INamedFactory<T>
-    {
-        private readonly Func<string, T> _factory;
-
-        /// <summary>
-        /// Initializes a new instance of the <see cref="DelegateNamedFactory{T}"/> class.
-        /// </summary>
-        /// <param name="factory">The factory function.</param>
-        public DelegateNamedFactory(Func<string, T> factory)
-        {
-            _factory = factory ?? throw new ArgumentNullException(nameof(factory));
-        }
-
-        /// <summary>
-        /// Creates an instance of the service with the specified name.
-        /// </summary>
-        /// <param name="name">The name.</param>
-        /// <returns>The created instance.</returns>
-        public T CreateNamed(string name)
-        {
-            return _factory(name);
-        }
-    }
-
-    #endregion
 }

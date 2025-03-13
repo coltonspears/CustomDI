@@ -51,19 +51,10 @@ namespace CustomDI
         {
             ThrowIfDisposed();
             
-            if (serviceType == null)
-                throw new ArgumentNullException(nameof(serviceType));
-            
-            if (implementationType == null)
-                throw new ArgumentNullException(nameof(implementationType));
-            
-            if (!serviceType.IsAssignableFrom(implementationType))
-                throw new ArgumentException($"Type {implementationType.Name} is not assignable to {serviceType.Name}");
-            
             var registration = new ServiceRegistration(serviceType, implementationType, lifetime);
             AddRegistration(registration);
             
-            return new RegistrationBuilder(registration);
+            return new RegistrationBuilder(registration, this);
         }
 
         /// <summary>
@@ -82,7 +73,7 @@ namespace CustomDI
             var registration = new ServiceRegistration(typeof(TService), instance);
             AddRegistration(registration);
             
-            return new RegistrationBuilder(registration);
+            return new RegistrationBuilder(registration, this);
         }
 
         /// <summary>
@@ -101,13 +92,13 @@ namespace CustomDI
                 throw new ArgumentNullException(nameof(factory));
             
             var registration = new ServiceRegistration(
-                typeof(TService), 
-                context => factory(context), 
+                typeof(TService),
+                context => factory(context),
                 lifetime);
             
             AddRegistration(registration);
             
-            return new RegistrationBuilder(registration);
+            return new RegistrationBuilder(registration, this);
         }
 
         /// <summary>
@@ -130,9 +121,6 @@ namespace CustomDI
         {
             ThrowIfDisposed();
             
-            if (serviceType == null)
-                throw new ArgumentNullException(nameof(serviceType));
-            
             var context = new ResolveContext(this, null);
             return context.Resolve(serviceType);
         }
@@ -147,16 +135,14 @@ namespace CustomDI
         {
             ThrowIfDisposed();
             
-            try
+            if (TryResolve(typeof(T), out var obj))
             {
-                service = Resolve<T>();
+                service = (T)obj;
                 return true;
             }
-            catch
-            {
-                service = null;
-                return false;
-            }
+            
+            service = null;
+            return false;
         }
 
         /// <summary>
@@ -189,7 +175,9 @@ namespace CustomDI
         public IEnumerable<T> ResolveAll<T>() where T : class
         {
             ThrowIfDisposed();
-            return ResolveAll(typeof(T)).Cast<T>();
+            
+            var context = new ResolveContext(this, null);
+            return context.ResolveAll<T>();
         }
 
         /// <summary>
@@ -200,9 +188,6 @@ namespace CustomDI
         public IEnumerable<object> ResolveAll(Type serviceType)
         {
             ThrowIfDisposed();
-            
-            if (serviceType == null)
-                throw new ArgumentNullException(nameof(serviceType));
             
             var context = new ResolveContext(this, null);
             return context.ResolveAll(serviceType);
@@ -245,38 +230,34 @@ namespace CustomDI
         public bool IsRegistered(Type serviceType)
         {
             ThrowIfDisposed();
-            
-            if (serviceType == null)
-                throw new ArgumentNullException(nameof(serviceType));
-            
-            return _registrations.ContainsKey(serviceType) && _registrations[serviceType].Count > 0;
+            return _registrations.ContainsKey(serviceType);
         }
 
         /// <summary>
-        /// Disposes the container.
+        /// Disposes the container and all scoped instances.
         /// </summary>
         public void Dispose()
         {
-            if (!_disposed)
+            if (_disposed)
+                return;
+            
+            _disposed = true;
+            
+            // Dispose all scopes
+            lock (_scopesLock)
             {
-                // Dispose all scopes
-                lock (_scopesLock)
+                foreach (var scope in _scopes)
                 {
-                    foreach (var scope in _scopes)
-                    {
-                        scope.Dispose();
-                    }
-                    
-                    _scopes.Clear();
+                    scope.Dispose();
                 }
                 
-                // Clear registrations
-                _registrations.Clear();
-                _namedRegistrations.Clear();
-                _keyedRegistrations.Clear();
-                
-                _disposed = true;
+                _scopes.Clear();
             }
+            
+            // Clear registrations
+            _registrations.Clear();
+            _namedRegistrations.Clear();
+            _keyedRegistrations.Clear();
         }
 
         /// <summary>
@@ -285,7 +266,7 @@ namespace CustomDI
         /// <param name="registration">The registration to add.</param>
         internal void AddRegistration(ServiceRegistration registration)
         {
-            // Add to type registrations
+            // Add to main registrations
             _registrations.AddOrUpdate(
                 registration.ServiceType,
                 new List<ServiceRegistration> { registration },
@@ -377,27 +358,14 @@ namespace CustomDI
         }
 
         /// <summary>
-        /// Removes all scoped instances for the specified scope.
+        /// Removes a scope from the container.
         /// </summary>
-        /// <param name="scope">The scope.</param>
-        internal void RemoveScopedInstances(IScope scope)
+        /// <param name="scope">The scope to remove.</param>
+        internal void RemoveScope(IScope scope)
         {
-            // Remove the scope from the list of active scopes
             lock (_scopesLock)
             {
                 _scopes.Remove(scope);
-            }
-            
-            // Remove all scoped instances for this scope
-            foreach (var registrationList in _registrations.Values)
-            {
-                foreach (var registration in registrationList)
-                {
-                    if (registration.Lifetime == ServiceLifetime.Scoped)
-                    {
-                        registration.RemoveScopedInstance(scope);
-                    }
-                }
             }
         }
 
@@ -438,4 +406,42 @@ namespace CustomDI
             return new Container();
         }
     }
+
+    //public class Scope : IScope
+    //{
+    //    public void Dispose()
+    //    {
+    //        throw new NotImplementedException();
+    //    }
+
+    //    public T Resolve<T>() where T : class
+    //    {
+    //        throw new NotImplementedException();
+    //    }
+
+    //    public object Resolve(Type serviceType)
+    //    {
+    //        throw new NotImplementedException();
+    //    }
+
+    //    public IEnumerable<T> ResolveAll<T>() where T : class
+    //    {
+    //        throw new NotImplementedException();
+    //    }
+
+    //    public IEnumerable<object> ResolveAll(Type serviceType)
+    //    {
+    //        throw new NotImplementedException();
+    //    }
+
+    //    public bool TryResolve<T>(out T service) where T : class
+    //    {
+    //        throw new NotImplementedException();
+    //    }
+
+    //    public bool TryResolve(Type serviceType, out object service)
+    //    {
+    //        throw new NotImplementedException();
+    //    }
+    //}
 }

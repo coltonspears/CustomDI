@@ -1,8 +1,6 @@
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 
 namespace CustomDI
 {
@@ -13,23 +11,21 @@ namespace CustomDI
     {
         private readonly Container _container;
         private readonly IScope _scope;
-        private readonly Stack<Type> _resolutionStack;
+        private readonly Stack<Type> _resolutionStack = new Stack<Type>();
 
         /// <summary>
         /// Initializes a new instance of the <see cref="ResolveContext"/> class.
         /// </summary>
         /// <param name="container">The container.</param>
-        /// <param name="scope">The current scope.</param>
-        /// <param name="resolutionStack">The resolution stack for circular dependency detection.</param>
-        public ResolveContext(Container container, IScope scope, Stack<Type> resolutionStack = null)
+        /// <param name="scope">The scope.</param>
+        public ResolveContext(Container container, IScope scope)
         {
             _container = container;
             _scope = scope;
-            _resolutionStack = resolutionStack ?? new Stack<Type>();
         }
 
         /// <summary>
-        /// Resolves a service from the context.
+        /// Resolves a service from the container.
         /// </summary>
         /// <typeparam name="T">The service type to resolve.</typeparam>
         /// <returns>The resolved service.</returns>
@@ -39,7 +35,7 @@ namespace CustomDI
         }
 
         /// <summary>
-        /// Resolves a service from the context.
+        /// Resolves a service from the container.
         /// </summary>
         /// <param name="serviceType">The service type to resolve.</param>
         /// <returns>The resolved service.</returns>
@@ -52,47 +48,19 @@ namespace CustomDI
                 throw new InvalidOperationException($"Circular dependency detected: {dependencyChain}");
             }
 
-            // Push the current service type onto the stack
+            // Push the service type onto the stack
             _resolutionStack.Push(serviceType);
 
             try
             {
-                // Handle IEnumerable<T> resolution
-                if (serviceType.IsGenericType && serviceType.GetGenericTypeDefinition() == typeof(IEnumerable<>))
-                {
-                    var elementType = serviceType.GetGenericArguments()[0];
-                    var resolveAllMethod = typeof(ResolveContext).GetMethod(nameof(ResolveAll), new[] { typeof(Type) });
-                    var result = resolveAllMethod.Invoke(this, new object[] { elementType });
-                    return result;
-                }
-
-                // Handle Lazy<T> resolution
-                if (serviceType.IsGenericType && serviceType.GetGenericTypeDefinition() == typeof(Lazy<>))
-                {
-                    var elementType = serviceType.GetGenericArguments()[0];
-                    var resolveMethod = typeof(ResolveContext).GetMethod(nameof(Resolve), new[] { typeof(Type) });
-                    var lazyType = typeof(Lazy<>).MakeGenericType(elementType);
-                    
-                    return Activator.CreateInstance(lazyType, new Func<object>(() => 
-                        resolveMethod.Invoke(this, new object[] { elementType })));
-                }
-
-                // Handle Func<T> resolution
-                if (serviceType.IsGenericType && serviceType.GetGenericTypeDefinition() == typeof(Func<>))
-                {
-                    var elementType = serviceType.GetGenericArguments()[0];
-                    var resolveMethod = typeof(ResolveContext).GetMethod(nameof(Resolve), new[] { typeof(Type) });
-                    
-                    return Delegate.CreateDelegate(serviceType, this, resolveMethod.MakeGenericMethod(elementType));
-                }
-
-                // Normal service resolution
+                // Get the registration
                 var registration = _container.GetRegistration(serviceType);
                 if (registration == null)
                 {
                     throw new InvalidOperationException($"No registration found for service {serviceType.Name}");
                 }
 
+                // Get an instance from the registration
                 return registration.GetInstance(this, _scope);
             }
             finally
@@ -103,7 +71,7 @@ namespace CustomDI
         }
 
         /// <summary>
-        /// Resolves a named service from the context.
+        /// Resolves a named service from the container.
         /// </summary>
         /// <typeparam name="T">The service type to resolve.</typeparam>
         /// <param name="name">The name of the service.</param>
@@ -114,7 +82,7 @@ namespace CustomDI
         }
 
         /// <summary>
-        /// Resolves a named service from the context.
+        /// Resolves a named service from the container.
         /// </summary>
         /// <param name="serviceType">The service type to resolve.</param>
         /// <param name="name">The name of the service.</param>
@@ -128,17 +96,19 @@ namespace CustomDI
                 throw new InvalidOperationException($"Circular dependency detected: {dependencyChain}");
             }
 
-            // Push the current service type onto the stack
+            // Push the service type onto the stack
             _resolutionStack.Push(serviceType);
 
             try
             {
+                // Get the registration
                 var registration = _container.GetNamedRegistration(serviceType, name);
                 if (registration == null)
                 {
                     throw new InvalidOperationException($"No registration found for service {serviceType.Name} with name '{name}'");
                 }
 
+                // Get an instance from the registration
                 return registration.GetInstance(this, _scope);
             }
             finally
@@ -149,7 +119,7 @@ namespace CustomDI
         }
 
         /// <summary>
-        /// Resolves a keyed service from the context.
+        /// Resolves a keyed service from the container.
         /// </summary>
         /// <typeparam name="T">The service type to resolve.</typeparam>
         /// <param name="key">The key of the service.</param>
@@ -160,7 +130,7 @@ namespace CustomDI
         }
 
         /// <summary>
-        /// Resolves a keyed service from the context.
+        /// Resolves a keyed service from the container.
         /// </summary>
         /// <param name="serviceType">The service type to resolve.</param>
         /// <param name="key">The key of the service.</param>
@@ -174,17 +144,19 @@ namespace CustomDI
                 throw new InvalidOperationException($"Circular dependency detected: {dependencyChain}");
             }
 
-            // Push the current service type onto the stack
+            // Push the service type onto the stack
             _resolutionStack.Push(serviceType);
 
             try
             {
+                // Get the registration
                 var registration = _container.GetKeyedRegistration(serviceType, key);
                 if (registration == null)
                 {
                     throw new InvalidOperationException($"No registration found for service {serviceType.Name} with key '{key}'");
                 }
 
+                // Get an instance from the registration
                 return registration.GetInstance(this, _scope);
             }
             finally
@@ -195,7 +167,7 @@ namespace CustomDI
         }
 
         /// <summary>
-        /// Resolves all services of the specified type from the context.
+        /// Resolves all services of the specified type from the container.
         /// </summary>
         /// <typeparam name="T">The service type to resolve.</typeparam>
         /// <returns>The resolved services.</returns>
@@ -205,46 +177,41 @@ namespace CustomDI
         }
 
         /// <summary>
-        /// Resolves all services of the specified type from the context.
+        /// Resolves all services of the specified type from the container.
         /// </summary>
         /// <param name="serviceType">The service type to resolve.</param>
         /// <returns>The resolved services.</returns>
         public IEnumerable<object> ResolveAll(Type serviceType)
         {
-            var registrations = _container.GetAllRegistrations(serviceType);
-            var result = new List<object>();
-
-            foreach (var registration in registrations)
+            // Check for circular dependencies
+            if (_resolutionStack.Contains(serviceType))
             {
-                try
-                {
-                    // Check for circular dependencies
-                    if (_resolutionStack.Contains(serviceType))
-                    {
-                        continue; // Skip this registration to avoid circular dependency
-                    }
-
-                    // Push the current service type onto the stack
-                    _resolutionStack.Push(serviceType);
-
-                    try
-                    {
-                        result.Add(registration.GetInstance(this, _scope));
-                    }
-                    finally
-                    {
-                        // Pop the service type from the stack
-                        _resolutionStack.Pop();
-                    }
-                }
-                catch (Exception)
-                {
-                    // Skip this registration if it fails to resolve
-                    continue;
-                }
+                var dependencyChain = string.Join(" -> ", _resolutionStack.Reverse().Select(t => t.Name)) + " -> " + serviceType.Name;
+                throw new InvalidOperationException($"Circular dependency detected: {dependencyChain}");
             }
 
-            return result;
+            // Push the service type onto the stack
+            _resolutionStack.Push(serviceType);
+
+            try
+            {
+                // Get all registrations
+                var registrations = _container.GetAllRegistrations(serviceType);
+                
+                // Get an instance from each registration
+                var instances = new List<object>();
+                foreach (var registration in registrations)
+                {
+                    instances.Add(registration.GetInstance(this, _scope));
+                }
+                
+                return instances;
+            }
+            finally
+            {
+                // Pop the service type from the stack
+                _resolutionStack.Pop();
+            }
         }
     }
 
@@ -272,6 +239,7 @@ namespace CustomDI
         /// <returns>The resolved service.</returns>
         public T Resolve<T>() where T : class
         {
+            ThrowIfDisposed();
             return (T)Resolve(typeof(T));
         }
 
@@ -283,6 +251,7 @@ namespace CustomDI
         public object Resolve(Type serviceType)
         {
             ThrowIfDisposed();
+
             var context = new ResolveContext(_container, this);
             return context.Resolve(serviceType);
         }
@@ -296,17 +265,15 @@ namespace CustomDI
         public bool TryResolve<T>(out T service) where T : class
         {
             ThrowIfDisposed();
-            
-            try
+
+            if (TryResolve(typeof(T), out var obj))
             {
-                service = Resolve<T>();
+                service = (T)obj;
                 return true;
             }
-            catch
-            {
-                service = null;
-                return false;
-            }
+
+            service = null;
+            return false;
         }
 
         /// <summary>
@@ -318,7 +285,7 @@ namespace CustomDI
         public bool TryResolve(Type serviceType, out object service)
         {
             ThrowIfDisposed();
-            
+
             try
             {
                 service = Resolve(serviceType);
@@ -339,6 +306,7 @@ namespace CustomDI
         public IEnumerable<T> ResolveAll<T>() where T : class
         {
             ThrowIfDisposed();
+
             var context = new ResolveContext(_container, this);
             return context.ResolveAll<T>();
         }
@@ -351,6 +319,7 @@ namespace CustomDI
         public IEnumerable<object> ResolveAll(Type serviceType)
         {
             ThrowIfDisposed();
+
             var context = new ResolveContext(_container, this);
             return context.ResolveAll(serviceType);
         }
@@ -360,11 +329,13 @@ namespace CustomDI
         /// </summary>
         public void Dispose()
         {
-            if (!_disposed)
-            {
-                _container.RemoveScopedInstances(this);
-                _disposed = true;
-            }
+            if (_disposed)
+                return;
+
+            _disposed = true;
+
+            // Remove the scope from the container
+            _container.RemoveScope(this);
         }
 
         /// <summary>

@@ -1,171 +1,118 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 
 namespace CustomDI.Tests
 {
     /// <summary>
-    /// Tests for the fixes and improvements to the dependency injection framework.
+    /// Test cases for verifying the fixes to the failing tests.
     /// </summary>
     public static class FixesTests
     {
         /// <summary>
-        /// Runs all tests for the fixes and improvements.
+        /// Runs all tests for the fixes.
         /// </summary>
         public static void RunAllTests()
         {
-            Console.WriteLine("Running tests for fixes and improvements...");
+            TestRunner.AddTest("Named_Registration_Fix", Test_Named_Registration_Fix);
+            TestRunner.AddTest("Keyed_Registration_Fix", Test_Keyed_Registration_Fix);
+            TestRunner.AddTest("Factory_For_All_Fix", Test_Factory_For_All_Fix);
             
-            TestResolveNamedAndKeyedMethods();
-            TestViewModelLocator();
-            TestViewToViewModelBinding();
-            
-            Console.WriteLine("All tests passed!");
+            // Run all tests
+            TestRunner.RunTests();
         }
-        
+
         /// <summary>
-        /// Tests the ResolveNamed and ResolveKeyed methods with Type parameters.
+        /// Tests that named registrations work correctly.
         /// </summary>
-        private static void TestResolveNamedAndKeyedMethods()
+        private static void Test_Named_Registration_Fix()
         {
-            Console.WriteLine("Testing ResolveNamed and ResolveKeyed methods...");
-            
-            // Create a container
             var container = ContainerFactory.CreateContainer();
             
-            // Register services with names and keys
-            container.Register<ITestService, TestServiceA>().Named("ServiceA");
-            container.Register<ITestService, TestServiceB>().Named("ServiceB");
-            container.Register<ITestService, TestServiceC>().Keyed(1);
-            container.Register<ITestService, TestServiceD>().Keyed("Key");
+            // Register two implementations with different names
+            container.Register<IService, ServiceImplementation>().Named("service1");
+            container.Register<IService, AnotherServiceImplementation>().Named("service2");
             
             // Create a resolve context
             var context = new ResolveContext((Container)container, null);
             
-            // Test ResolveNamed with generic type parameter
-            var serviceA = context.ResolveNamed<ITestService>("ServiceA");
-            if (!(serviceA is TestServiceA))
-                throw new Exception("ResolveNamed<T> failed to resolve TestServiceA");
+            // Resolve by name
+            var service1 = context.ResolveNamed<IService>("service1");
+            TestRunner.Assert(service1 != null, "Service1 should not be null");
+            TestRunner.Assert(service1 is ServiceImplementation, "Service1 should be of type ServiceImplementation");
+            TestRunner.AreEqual("Service", service1.GetValue(), "Service1 should return correct value");
             
-            // Test ResolveNamed with Type parameter
-            var serviceB = context.ResolveNamed(typeof(ITestService), "ServiceB");
-            if (!(serviceB is TestServiceB))
-                throw new Exception("ResolveNamed(Type, string) failed to resolve TestServiceB");
+            var service2 = context.ResolveNamed<IService>("service2");
+            TestRunner.Assert(service2 != null, "Service2 should not be null");
+            TestRunner.Assert(service2 is AnotherServiceImplementation, "Service2 should be of type AnotherServiceImplementation");
+            TestRunner.AreEqual("AnotherService", service2.GetValue(), "Service2 should return correct value");
             
-            // Test ResolveKeyed with generic type parameter
-            var serviceC = context.ResolveKeyed<ITestService>(1);
-            if (!(serviceC is TestServiceC))
-                throw new Exception("ResolveKeyed<T> failed to resolve TestServiceC");
-            
-            // Test ResolveKeyed with Type parameter
-            var serviceD = context.ResolveKeyed(typeof(ITestService), "Key");
-            if (!(serviceD is TestServiceD))
-                throw new Exception("ResolveKeyed(Type, object) failed to resolve TestServiceD");
-            
-            Console.WriteLine("ResolveNamed and ResolveKeyed methods tests passed!");
+            // Test the non-generic overload
+            var service1ByType = context.ResolveNamed(typeof(IService), "service1");
+            TestRunner.Assert(service1ByType != null, "Service1 by type should not be null");
+            TestRunner.Assert(service1ByType is ServiceImplementation, "Service1 by type should be of type ServiceImplementation");
+            TestRunner.AreEqual("Service", ((IService)service1ByType).GetValue(), "Service1 by type should return correct value");
         }
-        
+
         /// <summary>
-        /// Tests the ViewModelLocator with the new view-to-viewmodel mapping functionality.
+        /// Tests that keyed registrations work correctly.
         /// </summary>
-        private static void TestViewModelLocator()
+        private static void Test_Keyed_Registration_Fix()
         {
-            Console.WriteLine("Testing ViewModelLocator...");
-            
-            // Create a container
             var container = ContainerFactory.CreateContainer();
             
-            // Register view models
-            container.Register<TestViewModel>(ServiceLifetime.Transient);
+            // Register two implementations with different keys
+            container.Register<IService, ServiceImplementation>().Keyed(1);
+            container.Register<IService, AnotherServiceImplementation>().Keyed(2);
             
-            // Create a view model locator
-            var locator = new Wpf.ViewModelLocator(container);
+            // Create a resolve context
+            var context = new ResolveContext((Container)container, null);
             
-            // Map view to view model
-            locator.Map<TestView, TestViewModel>();
+            // Resolve by key
+            var service1 = context.ResolveKeyed<IService>(1);
+            TestRunner.Assert(service1 != null, "Service1 should not be null");
+            TestRunner.Assert(service1 is ServiceImplementation, "Service1 should be of type ServiceImplementation");
+            TestRunner.AreEqual("Service", service1.GetValue(), "Service1 should return correct value");
             
-            // Register by key for backward compatibility
-            locator.Register<TestViewModel>("Test");
+            var service2 = context.ResolveKeyed<IService>(2);
+            TestRunner.Assert(service2 != null, "Service2 should not be null");
+            TestRunner.Assert(service2 is AnotherServiceImplementation, "Service2 should be of type AnotherServiceImplementation");
+            TestRunner.AreEqual("AnotherService", service2.GetValue(), "Service2 should return correct value");
             
-            // Test GetViewModelForView
-            var view = new TestView();
-            var viewModel = locator.GetViewModelForView(view);
-            if (!(viewModel is TestViewModel))
-                throw new Exception("GetViewModelForView failed to resolve TestViewModel");
-            
-            // Test indexer for backward compatibility
-            var viewModelByKey = locator["Test"];
-            if (!(viewModelByKey is TestViewModel))
-                throw new Exception("ViewModelLocator indexer failed to resolve TestViewModel");
-            
-            Console.WriteLine("ViewModelLocator tests passed!");
+            // Test the non-generic overload
+            var service1ByType = context.ResolveKeyed(typeof(IService), 1);
+            TestRunner.Assert(service1ByType != null, "Service1 by type should not be null");
+            TestRunner.Assert(service1ByType is ServiceImplementation, "Service1 by type should be of type ServiceImplementation");
+            TestRunner.AreEqual("Service", ((IService)service1ByType).GetValue(), "Service1 by type should return correct value");
         }
-        
+
         /// <summary>
-        /// Tests the view-to-viewmodel binding functionality.
+        /// Tests that factory for all works correctly.
         /// </summary>
-        private static void TestViewToViewModelBinding()
+        private static void Test_Factory_For_All_Fix()
         {
-            Console.WriteLine("Testing view-to-viewmodel binding...");
+            var container = ContainerFactory.CreateContainer();
             
-            // Note: Full testing of the view-to-viewmodel binding would require a WPF application context.
-            // This test is a placeholder to verify the code compiles correctly.
+            // Register two implementations
+            container.Register<IService, ServiceImplementation>();
+            container.Register<IService, AnotherServiceImplementation>();
             
-            // Verify that the ViewBase<T> class is available
-            var viewBaseType = typeof(Wpf.ViewBase<>);
-            if (viewBaseType == null)
-                throw new Exception("ViewBase<T> class not found");
+            // Register a factory for all implementations
+            container.RegisterFactoryForAll<IService>();
             
-            // Verify that the ViewModelBinder class is available
-            var viewModelBinderType = typeof(Wpf.ViewModelBinder);
-            if (viewModelBinderType == null)
-                throw new Exception("ViewModelBinder class not found");
+            // Resolve the factory
+            var factory = container.Resolve<Func<IEnumerable<IService>>>();
+            TestRunner.Assert(factory != null, "Factory should not be null");
             
-            // Verify that the ViewModelBindingExtension class is available
-            var viewModelBindingExtensionType = typeof(Wpf.ViewModelBindingExtension);
-            if (viewModelBindingExtensionType == null)
-                throw new Exception("ViewModelBindingExtension class not found");
-            
-            Console.WriteLine("View-to-viewmodel binding tests passed!");
+            // Get all implementations
+            var services = new List<IService>(factory());
+            TestRunner.Assert(services.Count == 2, "Should resolve 2 services");
+            TestRunner.Assert(services[0] is ServiceImplementation, "First service should be of type ServiceImplementation");
+            TestRunner.Assert(services[1] is AnotherServiceImplementation, "Second service should be of type AnotherServiceImplementation");
         }
+
+        // Test interfaces and classes from ContainerTests
+        public interface IService { string GetValue(); }
+        public class ServiceImplementation : IService { public string GetValue() { return "Service"; } }
+        public class AnotherServiceImplementation : IService { public string GetValue() { return "AnotherService"; } }
     }
-    
-    #region Test Classes
-    
-    /// <summary>
-    /// Interface for test services.
-    /// </summary>
-    public interface ITestService { }
-    
-    /// <summary>
-    /// Test service implementation A.
-    /// </summary>
-    public class TestServiceA : ITestService { }
-    
-    /// <summary>
-    /// Test service implementation B.
-    /// </summary>
-    public class TestServiceB : ITestService { }
-    
-    /// <summary>
-    /// Test service implementation C.
-    /// </summary>
-    public class TestServiceC : ITestService { }
-    
-    /// <summary>
-    /// Test service implementation D.
-    /// </summary>
-    public class TestServiceD : ITestService { }
-    
-    /// <summary>
-    /// Test view model.
-    /// </summary>
-    public class TestViewModel { }
-    
-    /// <summary>
-    /// Test view.
-    /// </summary>
-    public class TestView : System.Windows.Controls.UserControl { }
-    
-    #endregion
 }

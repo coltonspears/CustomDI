@@ -408,7 +408,7 @@ namespace CustomDI
     /// <summary>
     /// Specifies that a property should be injected by the container.
     /// </summary>
-    [AttributeUsage(AttributeTargets.Property, AllowMultiple = false, Inherited = true)]
+    [AttributeUsage(AttributeTargets.Property|AttributeTargets.Constructor, AllowMultiple = false, Inherited = true)]
     public class InjectAttribute : Attribute
     {
         /// <summary>
