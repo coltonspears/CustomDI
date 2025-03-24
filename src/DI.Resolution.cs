@@ -41,33 +41,11 @@ namespace CustomDI
         /// <returns>The resolved service.</returns>
         public object Resolve(Type serviceType)
         {
-            // Check for circular dependencies
-            if (_resolutionStack.Contains(serviceType))
-            {
-                var dependencyChain = string.Join(" -> ", _resolutionStack.Reverse().Select(t => t.Name)) + " -> " + serviceType.Name;
-                throw new InvalidOperationException($"Circular dependency detected: {dependencyChain}");
-            }
-
-            // Push the service type onto the stack
-            _resolutionStack.Push(serviceType);
-
-            try
-            {
-                // Get the registration
-                var registration = _container.GetRegistration(serviceType);
-                if (registration == null)
-                {
-                    throw new InvalidOperationException($"No registration found for service {serviceType.Name}");
-                }
-
-                // Get an instance from the registration
-                return registration.GetInstance(this, _scope);
-            }
-            finally
-            {
-                // Pop the service type from the stack
-                _resolutionStack.Pop();
-            }
+            // Use the common resolution method with default registration retrieval
+            return ResolveInternal(serviceType, 
+                () => _container.GetAllRegistrations(serviceType).ToList(),
+                registrations => registrations.Count == 0 ? 
+                    $"No registration found for service {serviceType.Name}" : null);
         }
 
         /// <summary>
@@ -89,33 +67,14 @@ namespace CustomDI
         /// <returns>The resolved service.</returns>
         public object ResolveNamed(Type serviceType, string name)
         {
-            // Check for circular dependencies
-            if (_resolutionStack.Contains(serviceType))
-            {
-                var dependencyChain = string.Join(" -> ", _resolutionStack.Reverse().Select(t => t.Name)) + " -> " + serviceType.Name;
-                throw new InvalidOperationException($"Circular dependency detected: {dependencyChain}");
-            }
-
-            // Push the service type onto the stack
-            _resolutionStack.Push(serviceType);
-
-            try
-            {
-                // Get the registration
-                var registration = _container.GetNamedRegistration(serviceType, name);
-                if (registration == null)
-                {
-                    throw new InvalidOperationException($"No registration found for service {serviceType.Name} with name '{name}'");
-                }
-
-                // Get an instance from the registration
-                return registration.GetInstance(this, _scope);
-            }
-            finally
-            {
-                // Pop the service type from the stack
-                _resolutionStack.Pop();
-            }
+            // Use the common resolution method with named registration retrieval
+            var registration = _container.GetNamedRegistration(serviceType, name);
+            return ResolveInternal(serviceType, 
+                () => registration != null ? new List<ServiceRegistration> { registration } : new List<ServiceRegistration>(),
+                registrations => registrations.Count == 0 ? 
+                    $"No registration found for service {serviceType.Name} with name '{name}'" : null,
+                instance => instance == null ? 
+                    $"Failed to resolve service {serviceType.Name} with name '{name}'. Registration condition was not met." : null);
         }
 
         /// <summary>
@@ -137,33 +96,14 @@ namespace CustomDI
         /// <returns>The resolved service.</returns>
         public object ResolveKeyed(Type serviceType, object key)
         {
-            // Check for circular dependencies
-            if (_resolutionStack.Contains(serviceType))
-            {
-                var dependencyChain = string.Join(" -> ", _resolutionStack.Reverse().Select(t => t.Name)) + " -> " + serviceType.Name;
-                throw new InvalidOperationException($"Circular dependency detected: {dependencyChain}");
-            }
-
-            // Push the service type onto the stack
-            _resolutionStack.Push(serviceType);
-
-            try
-            {
-                // Get the registration
-                var registration = _container.GetKeyedRegistration(serviceType, key);
-                if (registration == null)
-                {
-                    throw new InvalidOperationException($"No registration found for service {serviceType.Name} with key '{key}'");
-                }
-
-                // Get an instance from the registration
-                return registration.GetInstance(this, _scope);
-            }
-            finally
-            {
-                // Pop the service type from the stack
-                _resolutionStack.Pop();
-            }
+            // Use the common resolution method with keyed registration retrieval
+            var registration = _container.GetKeyedRegistration(serviceType, key);
+            return ResolveInternal(serviceType, 
+                () => registration != null ? new List<ServiceRegistration> { registration } : new List<ServiceRegistration>(),
+                registrations => registrations.Count == 0 ? 
+                    $"No registration found for service {serviceType.Name} with key '{key}'" : null,
+                instance => instance == null ? 
+                    $"Failed to resolve service {serviceType.Name} with key '{key}'. Registration condition was not met." : null);
         }
 
         /// <summary>
@@ -184,11 +124,7 @@ namespace CustomDI
         public IEnumerable<object> ResolveAll(Type serviceType)
         {
             // Check for circular dependencies
-            if (_resolutionStack.Contains(serviceType))
-            {
-                var dependencyChain = string.Join(" -> ", _resolutionStack.Reverse().Select(t => t.Name)) + " -> " + serviceType.Name;
-                throw new InvalidOperationException($"Circular dependency detected: {dependencyChain}");
-            }
+            CheckForCircularDependencies(serviceType);
 
             // Push the service type onto the stack
             _resolutionStack.Push(serviceType);
@@ -198,11 +134,15 @@ namespace CustomDI
                 // Get all registrations
                 var registrations = _container.GetAllRegistrations(serviceType);
                 
-                // Get an instance from each registration
+                // Get an instance from each registration that meets its condition
                 var instances = new List<object>();
                 foreach (var registration in registrations)
                 {
-                    instances.Add(registration.GetInstance(this, _scope));
+                    var instance = registration.GetInstance(this, _scope);
+                    if (instance != null)
+                    {
+                        instances.Add(instance);
+                    }
                 }
                 
                 return instances;
@@ -211,6 +151,81 @@ namespace CustomDI
             {
                 // Pop the service type from the stack
                 _resolutionStack.Pop();
+            }
+        }
+
+        /// <summary>
+        /// Common internal method for resolving services to reduce code duplication.
+        /// </summary>
+        /// <param name="serviceType">The service type to resolve.</param>
+        /// <param name="getRegistrations">Function to get the registrations.</param>
+        /// <param name="validateRegistrations">Function to validate registrations and return error message if invalid.</param>
+        /// <param name="validateInstance">Optional function to validate the resolved instance and return error message if invalid.</param>
+        /// <returns>The resolved service.</returns>
+        private object ResolveInternal(
+            Type serviceType, 
+            Func<List<ServiceRegistration>> getRegistrations, 
+            Func<List<ServiceRegistration>, string> validateRegistrations,
+            Func<object, string> validateInstance = null)
+        {
+            // Check for circular dependencies
+            CheckForCircularDependencies(serviceType);
+
+            // Push the service type onto the stack
+            _resolutionStack.Push(serviceType);
+
+            try
+            {
+                // Get the registrations
+                var registrations = getRegistrations();
+                
+                // Validate registrations
+                var registrationsError = validateRegistrations(registrations);
+                if (registrationsError != null)
+                {
+                    throw new InvalidOperationException(registrationsError);
+                }
+
+                // Try to get an instance from each registration until one succeeds
+                foreach (var registration in registrations)
+                {
+                    var instance = registration.GetInstance(this, _scope);
+                    if (instance != null)
+                    {
+                        // Validate instance if needed
+                        if (validateInstance != null)
+                        {
+                            var instanceError = validateInstance(instance);
+                            if (instanceError != null)
+                            {
+                                throw new InvalidOperationException(instanceError);
+                            }
+                        }
+                        
+                        return instance;
+                    }
+                }
+
+                // If we get here, no registration could provide an instance
+                throw new InvalidOperationException($"Failed to resolve service {serviceType.Name}. All registrations failed to provide an instance.");
+            }
+            finally
+            {
+                // Pop the service type from the stack
+                _resolutionStack.Pop();
+            }
+        }
+
+        /// <summary>
+        /// Checks for circular dependencies in the resolution stack.
+        /// </summary>
+        /// <param name="serviceType">The service type to check.</param>
+        private void CheckForCircularDependencies(Type serviceType)
+        {
+            if (_resolutionStack.Contains(serviceType))
+            {
+                var dependencyChain = string.Join(" -> ", _resolutionStack.Reverse().Select(t => t.Name)) + " -> " + serviceType.Name;
+                throw new InvalidOperationException($"Circular dependency detected: {dependencyChain}");
             }
         }
     }

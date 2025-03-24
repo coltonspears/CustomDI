@@ -23,6 +23,8 @@ namespace CustomDI
         private readonly HashSet<IScope> _scopes = new HashSet<IScope>();
         private readonly object _scopesLock = new object();
         
+        private readonly DisposableTracker _disposableTracker = new DisposableTracker();
+        
         private bool _disposed;
 
         /// <summary>
@@ -73,6 +75,9 @@ namespace CustomDI
             var registration = new ServiceRegistration(typeof(TService), instance);
             AddRegistration(registration);
             
+            // Track for disposal if it's disposable
+            _disposableTracker.TrackDisposable(instance, ServiceLifetime.Singleton);
+            
             return new RegistrationBuilder(registration, this);
         }
 
@@ -93,7 +98,12 @@ namespace CustomDI
             
             var registration = new ServiceRegistration(
                 typeof(TService),
-                context => factory(context),
+                context => {
+                    var instance = factory(context);
+                    // Track for disposal if it's disposable
+                    _disposableTracker.TrackDisposable(instance, lifetime);
+                    return instance;
+                },
                 lifetime);
             
             AddRegistration(registration);
@@ -122,7 +132,15 @@ namespace CustomDI
             ThrowIfDisposed();
             
             var context = new ResolveContext(this, null);
-            return context.Resolve(serviceType);
+            var instance = context.Resolve(serviceType);
+            
+            // Track for disposal if it's transient and disposable
+            if (instance != null)
+            {
+                _disposableTracker.TrackDisposable(instance, ServiceLifetime.Transient);
+            }
+            
+            return instance;
         }
 
         /// <summary>
@@ -177,7 +195,15 @@ namespace CustomDI
             ThrowIfDisposed();
             
             var context = new ResolveContext(this, null);
-            return context.ResolveAll<T>();
+            var instances = context.ResolveAll<T>().ToList();
+            
+            // Track for disposal if they're transient and disposable
+            foreach (var instance in instances)
+            {
+                _disposableTracker.TrackDisposable(instance, ServiceLifetime.Transient);
+            }
+            
+            return instances;
         }
 
         /// <summary>
@@ -190,7 +216,15 @@ namespace CustomDI
             ThrowIfDisposed();
             
             var context = new ResolveContext(this, null);
-            return context.ResolveAll(serviceType);
+            var instances = context.ResolveAll(serviceType).ToList();
+            
+            // Track for disposal if they're transient and disposable
+            foreach (var instance in instances)
+            {
+                _disposableTracker.TrackDisposable(instance, ServiceLifetime.Transient);
+            }
+            
+            return instances;
         }
 
         /// <summary>
@@ -253,6 +287,9 @@ namespace CustomDI
                 
                 _scopes.Clear();
             }
+            
+            // Dispose all tracked disposable services
+            _disposableTracker.DisposeAllServices();
             
             // Clear registrations
             _registrations.Clear();
@@ -367,6 +404,9 @@ namespace CustomDI
             {
                 _scopes.Remove(scope);
             }
+            
+            // Dispose all scoped services for this scope
+            _disposableTracker.DisposeServices(ServiceLifetime.Scoped);
         }
 
         /// <summary>
@@ -406,42 +446,4 @@ namespace CustomDI
             return new Container();
         }
     }
-
-    //public class Scope : IScope
-    //{
-    //    public void Dispose()
-    //    {
-    //        throw new NotImplementedException();
-    //    }
-
-    //    public T Resolve<T>() where T : class
-    //    {
-    //        throw new NotImplementedException();
-    //    }
-
-    //    public object Resolve(Type serviceType)
-    //    {
-    //        throw new NotImplementedException();
-    //    }
-
-    //    public IEnumerable<T> ResolveAll<T>() where T : class
-    //    {
-    //        throw new NotImplementedException();
-    //    }
-
-    //    public IEnumerable<object> ResolveAll(Type serviceType)
-    //    {
-    //        throw new NotImplementedException();
-    //    }
-
-    //    public bool TryResolve<T>(out T service) where T : class
-    //    {
-    //        throw new NotImplementedException();
-    //    }
-
-    //    public bool TryResolve(Type serviceType, out object service)
-    //    {
-    //        throw new NotImplementedException();
-    //    }
-    //}
 }

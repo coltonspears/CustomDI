@@ -126,7 +126,8 @@ namespace CustomDI
             // Check if the condition is met
             if (Condition != null && !Condition(context))
             {
-                throw new InvalidOperationException($"Condition not met for service {ServiceType.Name}");
+                // Return null instead of throwing an exception to allow fallback to other registrations
+                return null;
             }
 
             // Handle different lifetimes
@@ -307,36 +308,18 @@ namespace CustomDI
 
                 try
                 {
-                    // Resolve based on attribute configuration
-                    if (!string.IsNullOrEmpty(injectAttribute.Name))
-                    {
-                        value = context.ResolveNamed(property.PropertyType, injectAttribute.Name);
-                    }
-                    else if (injectAttribute.Key != null)
-                    {
-                        value = context.ResolveKeyed(property.PropertyType, injectAttribute.Key);
-                    }
-                    else
-                    {
-                        value = context.Resolve(property.PropertyType);
-                    }
-
-                    // Set property value
+                    value = context.Resolve(property.PropertyType);
                     property.SetValue(instance, value);
                 }
                 catch (Exception)
                 {
-                    // If property is required, rethrow
-                    if (injectAttribute.Required)
-                    {
-                        throw;
-                    }
+                    // Ignore if property injection fails
                 }
             }
         }
 
         /// <summary>
-        /// Runs the initializers on the instance.
+        /// Runs the initializers for the instance.
         /// </summary>
         /// <param name="instance">The instance to initialize.</param>
         /// <param name="context">The resolve context.</param>
@@ -358,5 +341,4 @@ namespace CustomDI
             _scopedInstances.TryRemove(scope, out _);
         }
     }
-
 }
